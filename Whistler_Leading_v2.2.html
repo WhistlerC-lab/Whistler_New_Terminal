@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WHISTLER EVOLUTION v4 — 손익비 + 변별력 필터</title>
+<style>
+:root{--bg:#070b12;--bg2:#0c1320;--bd:#1b2c42;--tx:#bcd4e6;--tx2:#7fa1c3;--tx3:#5a7da3;
+--bull:#26d07c;--bear:#ff3b5c;--neut:#4f7bd6;--gold:#ffc24b;--cyan:#34d6ff;--purp:#b464ff;}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--tx);font:14px/1.5 'Segoe UI',system-ui,sans-serif;padding:0 0 60px}
+.mono{font-family:'Consolas','Share Tech Mono',monospace}
+header{padding:14px 20px;border-bottom:1px solid var(--bd);background:var(--bg2);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px}
+h1{font-size:16px;letter-spacing:.12em;color:var(--cyan)}
+.sub{font-size:11px;color:var(--tx3)}
+.wrap{padding:16px 20px;max-width:1200px;margin:0 auto;}
+.card{border:1px solid var(--bd);border-radius:4px;background:var(--bg2);padding:14px 16px;margin-bottom:14px}
+label{font-size:11px;color:var(--tx3);display:block;margin-bottom:4px;text-transform:uppercase;letter-spacing:.06em}
+input,select{background:var(--bg);border:1px solid var(--bd);color:var(--tx);padding:7px 9px;border-radius:3px;font-size:13px;outline:none}
+.btn{padding:9px 20px;border:1px solid var(--cyan);background:rgba(52,214,255,.06);color:var(--cyan);font-weight:700;border-radius:3px;cursor:pointer;font-size:13px;letter-spacing:.05em}
+.btn:hover{background:rgba(52,214,255,.15)}
+.btn.evo{border-color:var(--purp);color:var(--purp);background:rgba(180,100,255,.08)}
+.btn.evo:hover{background:rgba(180,100,255,.2)}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+.row{display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end}
+.prog{height:3px;background:#142033;border-radius:2px;overflow:hidden;margin:10px 0}
+.prog>div{height:100%;width:0;background:var(--purp);transition:width .1s}
+.msg{font-size:12px;color:var(--tx2);font-family:monospace;min-height:16px}
+table{width:100%;border-collapse:collapse;margin-top:8px;font-size:13px}
+th{text-align:left;padding:8px;font-size:10px;color:var(--tx3);text-transform:uppercase;border-bottom:1px solid var(--bd);cursor:pointer}
+td{padding:8px;border-bottom:1px solid #11202f;white-space:nowrap}
+tr:hover td{background:rgba(52,214,255,.03)}
+.sym{font-weight:700;color:#e2f1fb;font-family:monospace}
+.pos{color:var(--bull)}.neg{color:var(--bear)}.mut{color:var(--tx3)}
+.pill{font-size:10px;padding:2px 7px;border-radius:10px;border:1px solid var(--bd);color:var(--tx2)}
+.kpi{display:flex;gap:22px;flex-wrap:wrap;margin:6px 0;background:#0a121d;padding:12px;border:1px solid var(--bd);border-radius:4px}
+.kpi div span{display:block;font-size:11px;color:var(--tx3)}
+.kpi div b{font-size:18px;font-family:monospace;color:var(--purp)}
+.note{font-size:12px;color:var(--tx2);line-height:1.7}
+.small{font-size:11px;color:var(--tx3)}
+.log-box{max-height:150px;overflow-y:auto;background:#05080d;padding:10px;font-size:11px;font-family:monospace;color:var(--tx2);border:1px solid var(--bd);margin-top:10px}
+.warn-box{background:rgba(255,59,92,0.1);border:1px solid var(--bear);color:var(--bear);padding:12px;border-radius:4px;margin-bottom:14px;font-weight:700;display:none;}
+</style>
+</head>
+<body>
+<header>
+  <div><h1>◈ WHISTLER EVOLUTION v4</h1><div class="sub">손익비 레이스(TP vs SL) + 10회 자가 진화 + 변별력 검증 페일세이프</div></div>
+  <div class="small mono" id="calibState" style="color:var(--purp);font-weight:700">진화 대기 중...</div>
+</header>
+
+<div class="wrap">
+  <div class="card">
+    <div class="row">
+      <div>
+        <label>진화 대상 종목수 (거래량 상위)</label>
+        <select id="topN"><option>30</option><option selected>50</option><option>80</option></select>
+      </div>
+      <div>
+        <label>과거 데이터 봉 (1시간봉)</label>
+        <select id="kLimit"><option>500</option><option selected>1000</option></select>
+      </div>
+      <button class="btn evo" id="evoBtn" onclick="runEvolution()">🧬 데이터 로드 및 최적화 시작</button>
+    </div>
+    <div class="prog"><div id="progFill"></div></div>
+    <div class="msg" id="sysMsg">성공 기준: 손절선(ATR 1배)을 건드리지 않고 익절선(최소 4% 또는 ATR 2배)에 먼저 도달하기.</div>
+    <div class="log-box" id="logBox">시스템 대기 중...</div>
+  </div>
+
+  <div id="warnBox" class="warn-box">
+    ⚠ 시스템 경고: 10회 진화 결과, 어떤 가중치 조합도 시장 평균 대비 유의미한 변별력(배수 1.15x 이상)을 확보하지 못했습니다. 현재 장세가 매우 불규칙하거나 수렴 중이므로 신규 매매를 쉬는 것을 강력히 권장합니다.
+  </div>
+
+  <div class="card" id="scanResWrap" style="overflow-x:auto">
+    <div style="margin-bottom:10px;font-weight:700;color:var(--cyan)">📊 현재 장세에 맞춰 추출된 최적 파라미터 가중치</div>
+    <div id="bestParams" class="kpi" style="margin-bottom:20px;display:none;"></div>
+    <div id="scanRes" class="note">진화 완료 후 여기에 실시간 스캔 결과가 나타납니다.</div>
+  </div>
+</div>
+
+<script>
+const FAPI='https://fapi.binance.com';
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+const logBox=document.getElementById('logBox');
+const sysMsg=document.getElementById('sysMsg');
+const progFill=document.getElementById('progFill');
+const warnBox=document.getElementById('warnBox');
+
+function log(msg){
+  logBox.innerHTML+=`<div>${msg}</div>`;
+  logBox.scrollTop=logBox.scrollHeight;
+  sysMsg.textContent=msg;
+}
+
+async function fetchAPI(url){
+  for(let i=0;i<3;i++){
+    const r=await fetch(url);
+    if(r.ok) return await r.json();
+    if(r.status===429) { log(`⚠ API 제한(429). ${i+1}초 대기...`); await sleep(1000*(i+1)); continue; }
+    throw new Error(`HTTP ${r.status}`);
+  }
+}
+
+async function getTopSymbols(n){
+  const a=await fetchAPI(`${FAPI}/fapi/v1/ticker/24hr`);
+  return a.filter(t=>t.symbol.endsWith('USDT')&&+t.quoteVolume>5e6)
+          .sort((x,y)=>+y.quoteVolume-+x.quoteVolume).slice(0,n).map(t=>t.symbol);
+}
+async function getKlines(sym,limit){
+  const a=await fetchAPI(`${FAPI}/fapi/v1/klines?symbol=${sym}&interval=1h&limit=${limit}`);
+  return a.map(k=>({t:k[0],o:+k[1],h:+k[2],l:+k[3],c:+k[4],v:+k[5]}));
+}
+async function getFundingRates(){
+  try{
+    const res=await fetchAPI(`${FAPI}/fapi/v1/premiumIndex`);
+    const frMap={}; res.forEach(r=>{ frMap[r.symbol] = +r.lastFundingRate; });
+    return frMap;
+  }catch(e){ return {}; }
+}
+
+function mean(a){let s=0;for(const x of a)s+=x;return a.length?s/a.length:0;}
+function clamp(x,a,b){return Math.max(a,Math.min(b,x));}
+function ema(arr,p){let k=2/(p+1),e=arr[0];for(let z=1;z<arr.length;z++)e=arr[z]*k+e*(1-k);return e;}
+function atr(arr,p=14){let s=0,n=0;for(let z=arr.length-p;z<arr.length;z++){if(z<1)continue;const tr=Math.max(arr[z].h-arr[z].l,Math.abs(arr[z].h-arr[z-1].c),Math.abs(arr[z].l-arr[z-1].c));s+=tr;n++;}return n?s/n:0;}
+
+function btcRegime(btcClose,i){
+  const def={f:1.0};
+  if(!btcClose||i<48) return def;
+  const sl=btcClose.slice(i-48,i+1);
+  if(sl.length<30) return def;
+  const ef=ema(sl.slice(-12),12), es=ema(sl.slice(-48),48);
+  const bTrend=ef/es-1;
+  const c=btcClose[i], p=btcClose[i-24];
+  const b24=(c&&p)?(c-p)/p:0;
+  const r=clamp(bTrend/0.012*0.6 + b24/0.05*0.4, -1, 1);
+  const f=clamp(0.45+0.55*((r+1)/2), 0.45, 1.0);
+  return {f};
+}
+
+function calcFeatures(cs, i, btcClose, weights, currentFunding = 0){
+  const need=130; if(i<need) return null;
+  const C=cs.slice(i-need+1,i+1);
+  const closes=C.map(x=>x.c), highs=C.map(x=>x.h), lows=C.map(x=>x.l), vols=C.map(x=>x.v);
+  const cur=closes[closes.length-1];
+  
+  const atrVal=atr(C);
+  const atrPct=cur?atrVal/cur:0;
+
+  const emaFast=ema(closes.slice(-12),12), emaSlow=ema(closes.slice(-48),48);
+  const trend=clamp((emaFast/emaSlow-1)/0.06,0,1); 
+
+  let ret24=(cur-closes[closes.length-24])/closes[closes.length-24];
+  // 펀딩비가 음수면 숏 스퀴즈 가점 (모멘텀 부스트)
+  if(currentFunding < -0.0005) ret24 *= 1.2; 
+  const mom=clamp(ret24/0.15,0,1);
+
+  const recV=mean(vols.slice(-10)), priorV=mean(vols.slice(-50,-10));
+  const vRatio=priorV?recV/priorV:1;
+  const volUp=clamp((vRatio-1)/1.0,0,1);
+
+  const hi=Math.max(...highs.slice(-50)), lo=Math.min(...lows.slice(-50));
+  const breakout=clamp((hi>lo)?(cur-lo)/(hi-lo):.5, 0, 1);
+
+  let rs=0.5;
+  if(btcClose){
+    const bCur=btcClose[i], bPast=btcClose[i-24];
+    if(bCur&&bPast){
+      const bRet=(bCur-bPast)/bPast;
+      const rsN=clamp((ret24-bRet)/(atrPct*5||0.05),-1.5,1.5);
+      rs=clamp((rsN+0.5)/2,0,1);
+    }
+  }
+
+  const ret3=(cur-closes[closes.length-3])/closes[closes.length-3];
+  const overheat = ret3>0.18 ? 0.80 : 1.0;
+
+  const br=btcRegime(btcClose,i);
+  
+  const base = weights.t*trend + weights.m*mom + weights.v*volUp + weights.b*breakout + weights.r*rs;
+  const score = Math.round(clamp(base*overheat*br.f,0,1)*100);
+
+  return { raw:score, atrPct };
+}
+
+let CACHE = {}; 
+let BEST_WEIGHTS = null;
+let CALIB_TABLE = null;
+let BASE_RATE = 0;
+
+async function runEvolution(){
+  const btn=document.getElementById('evoBtn'); btn.disabled=true;
+  logBox.innerHTML='';
+  warnBox.style.display='none';
+  document.getElementById('bestParams').style.display='none';
+  
+  const nSyms = +document.getElementById('topN').value;
+  const kLimit = +document.getElementById('kLimit').value;
+  
+  try{
+    log(`[1/3] 거래량 상위 ${nSyms}개 심볼 수집...`);
+    const syms = await getTopSymbols(nSyms);
+    syms.unshift('BTCUSDT'); 
+    
+    log(`[2/3] 과거 데이터(${kLimit}봉) 다운로드 중...`);
+    let loaded=0;
+    for(const sym of syms){
+      try{ CACHE[sym] = await getKlines(sym, kLimit); }catch(e){}
+      loaded++;
+      progFill.style.width=(loaded/syms.length*30)+'%';
+      await sleep(40); 
+    }
+
+    const btcClose = CACHE['BTCUSDT'].map(x=>x.c);
+    const HOR = 36; // 관찰 시간 36시간으로 연장
+    
+    log(`[3/3] 🧬 인메모리 자가 진화 알고리즘 10세대 시작 (손익비 레이스 적용)...`);
+    let bestLift = 0;
+    let finalBaseProb = 0;
+    
+    for(let iter=1; iter<=10; iter++){
+      let w = { t:Math.random(), m:Math.random(), v:Math.random(), b:Math.random(), r:Math.random() };
+      let sum = w.t + w.m + w.v + w.b + w.r;
+      w = { t:w.t/sum, m:w.m/sum, v:w.v/sum, b:w.b/sum, r:w.r/sum };
+      
+      const samples=[];
+      
+      for(const sym of syms){
+        if(sym==='BTCUSDT' || !CACHE[sym]) continue;
+        const cs = CACHE[sym];
+        const n = Math.min(cs.length, btcClose.length);
+        
+        for(let i=130; i<n-HOR; i+=6){ // 연산 속도를 위해 6시간 간격 샘플링
+          const f = calcFeatures(cs, i, btcClose, w);
+          if(!f) continue;
+          
+          const entry = cs[i].c;
+          // [핵심 로직 변경] 복합 타겟 적용 (손익비 2:1 이상 세팅)
+          // 익절선: 기본 4% 이상이되, 변동성이 크면 ATR의 2배
+          const tpPct = Math.max(0.04, f.atrPct * 2);
+          // 손절선: 기본 2% 이상이되, 변동성이 크면 ATR의 1배
+          const slPct = Math.max(0.02, f.atrPct * 1);
+          
+          const tp = entry * (1 + tpPct);
+          const sl = entry * (1 - slPct);
+          
+          let win = 0; 
+          for(let j=i+1; j<=i+HOR; j++){
+            if(cs[j].l <= sl) { win = 0; break; } // 손절선을 먼저 터치하면 실패
+            if(cs[j].h >= tp) { win = 1; break; } // 익절선을 먼저 터치하면 성공
+          }
+          
+          samples.push({raw:f.raw, label:win});
+        }
+      }
+      
+      const baseProb = mean(samples.map(s=>s.label));
+      const hiSamples = samples.filter(s=>s.raw>=60);
+      const hiProb = hiSamples.length ? mean(hiSamples.map(s=>s.label)) : 0;
+      
+      // 변별력(Lift) 계산
+      const lift = baseProb ? hiProb/baseProb : 0;
+      
+      log(`   └ 세대 ${iter}: 배수(Lift)=${lift.toFixed(2)}x (기저율 ${(baseProb*100).toFixed(1)}% → 고득점 확률 ${(hiProb*100).toFixed(1)}%)`);
+      progFill.style.width=(30 + (iter/10)*70)+'%';
+
+      if(lift > bestLift && hiSamples.length > 30){
+        bestLift = lift;
+        BEST_WEIGHTS = w;
+        finalBaseProb = baseProb;
+        
+        const buckets=[];
+        for(let lo=0;lo<100;lo+=10){
+          const inb=samples.filter(s=>s.raw>=lo&&s.raw<lo+10);
+          if(inb.length>=15) buckets.push({lo, hi:lo+10, prob:mean(inb.map(s=>s.label))});
+        }
+        CALIB_TABLE = buckets;
+      }
+      await sleep(10); 
+    }
+
+    BASE_RATE = finalBaseProb;
+
+    // [핵심 로직 추가] 변별력 부족 시 경고 페일세이프
+    if(bestLift < 1.15){
+      warnBox.style.display = 'block';
+      log(`⚠ 진화 실패: 통계적 우위(최소 1.15x) 확보를 실패했습니다. 점수를 맹신하지 마세요.`);
+      document.getElementById('calibState').textContent = `경고: 변별력 없음 (최대 ${bestLift.toFixed(2)}x)`;
+    } else {
+      log(`✅ 진화 완료! 최고 효율 파라미터 적용 (성과: ${bestLift.toFixed(2)}배)`);
+      document.getElementById('calibState').textContent = `진화 완료: 변별력 ${bestLift.toFixed(2)}x 우위`;
+    }
+    
+    displayBestParams();
+    await runLiveScan(syms.filter(s=>s!=='BTCUSDT'));
+
+  }catch(e){ log(`❌ 오류: ${e.message}`); }
+  btn.disabled=false;
+}
+
+function displayBestParams(){
+  if(!BEST_WEIGHTS) return;
+  const w = BEST_WEIGHTS;
+  const pBox = document.getElementById('bestParams');
+  pBox.style.display='flex';
+  pBox.innerHTML = `
+    <div><span>추세 (Trend)</span><b style="color:var(--cyan)">${(w.t*100).toFixed(0)}%</b></div>
+    <div><span>모멘텀 (Momentum)</span><b style="color:var(--cyan)">${(w.m*100).toFixed(0)}%</b></div>
+    <div><span>거래량 (Volume)</span><b style="color:var(--cyan)">${(w.v*100).toFixed(0)}%</b></div>
+    <div><span>고점위치 (Breakout)</span><b style="color:var(--cyan)">${(w.b*100).toFixed(0)}%</b></div>
+    <div><span>상대강세 (RS)</span><b style="color:var(--cyan)">${(w.r*100).toFixed(0)}%</b></div>
+  `;
+}
+
+async function runLiveScan(syms){
+  log(`라이브 스캔 진행 중... (실시간 펀딩비 결합)`);
+  const fundingMap = await getFundingRates();
+  let scanResults = [];
+  const btcClose = CACHE['BTCUSDT'].map(x=>x.c);
+  
+  for(const sym of syms){
+    if(!CACHE[sym]) continue;
+    const cs = CACHE[sym];
+    const fr = fundingMap[sym] || 0;
+    
+    const f = calcFeatures(cs, cs.length-1, btcClose, BEST_WEIGHTS, fr);
+    if(f){
+      let prob = 0;
+      if(CALIB_TABLE){
+        const b = CALIB_TABLE.find(b=> f.raw>=b.lo && f.raw<b.hi);
+        prob = b ? b.prob : (f.raw>=90 ? CALIB_TABLE[CALIB_TABLE.length-1].prob : BASE_RATE);
+      }
+      
+      const tpPct = Math.max(0.04, f.atrPct * 2);
+      const slPct = Math.max(0.02, f.atrPct * 1);
+      
+      scanResults.push({ sym:sym.replace('USDT',''), raw:f.raw, prob:prob, funding:fr, tp:tpPct, sl:slPct });
+    }
+  }
+  
+  scanResults.sort((a,b)=> b.prob - a.prob || b.raw - a.raw); 
+  
+  let h=`<table><thead><tr><th>종목</th><th>진화 점수</th><th>TP도달 성공률</th><th>현재 펀딩비</th><th>제안 타겟(TP)</th><th>제안 손절(SL)</th></tr></thead><tbody>`;
+  for(const r of scanResults){
+    const isSqueeze = r.funding < -0.0005 ? '<span class="pill neg" style="border:1px solid var(--bear)">⚠ 스퀴즈 유력</span>' : '';
+    const probTxt = (r.prob*100).toFixed(1)+'%';
+    h+=`<tr>
+      <td class="sym">${r.sym}</td>
+      <td class="mono pos" style="font-weight:700">${r.raw}</td>
+      <td class="mono" style="color:var(--purp);font-weight:700">${probTxt}</td>
+      <td class="mono ${r.funding<0?'neg':''}">${(r.funding*100).toFixed(4)}% ${isSqueeze}</td>
+      <td class="mono" style="color:var(--bull)">+${(r.tp*100).toFixed(1)}%</td>
+      <td class="mono" style="color:var(--bear)">-${(r.sl*100).toFixed(1)}%</td>
+    </tr>`;
+  }
+  h+=`</tbody></table>`;
+  document.getElementById('scanRes').innerHTML=h;
+  log(`✅ 라이브 스캔 및 화면 갱신 완료.`);
+}
+</script>
+</body>
+</html>
